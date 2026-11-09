@@ -66,7 +66,9 @@ taskFormState();
 async function signedPhotoUrl(path){
  const data=await adminRequest('/storage/v1/object/sign/messejagt-billeder/'+path.split('/').map(encodeURIComponent).join('/'),{method:'POST',body:JSON.stringify({expiresIn:120})});
  if(!data?.signedURL)throw new Error('Kunne ikke åbne billedet');
- return BASE+(data.signedURL.startsWith('/')?data.signedURL:'/storage/v1'+data.signedURL);
+ const signedPath=data.signedURL;
+ if(/^https:\/\//i.test(signedPath))return signedPath;
+ return BASE+(signedPath.startsWith('/storage/v1/')?signedPath:'/storage/v1/'+signedPath.replace(/^\/+/,''));
 }
 async function loadPhotoReviews(){
  const list=$('photoReviews');if(!list||!selectedEvent)return;
