@@ -1,7 +1,1 @@
-Messejagten version 5
-
-Upload alle filer fra denne mappe til roden af GitHub-repositoriet.
-Åbn admin.html for at logge ind og oprette arrangementer.
-Formularen er forudfyldt med Idécafé 2026 / IDECAFE2026 / aaben, men opretter intet før klik.
-OBS: Aaben betyder, at deltagere kan oprette hold med det samme. Opret opgaver før koden deles.
-Eksisterende deltagerside og holddata bevares.
+Messejagten version 6 – opgavestyring. Upload alle filer til roden af GitHub Pages-repositoriet. Administrator: admin.html. Opgaver kan oprettes, redigeres og aktiveres/deaktiveres. Deaktivering bevarer eksisterende besvarelser. Foto-upload og automatisk bedømmelse af tekst/tal er endnu ikke implementeret. Opgaver tildeles hold ved oprettelse; eksisterende hold får ikke automatisk nye opgaver.
