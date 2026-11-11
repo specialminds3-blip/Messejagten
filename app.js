@@ -13,7 +13,7 @@ function clearError(){$('notice').hidden=true}
 async function rpc(name,args){const res=await fetch(URL_BASE+'/rest/v1/rpc/'+name,{method:'POST',headers:{'Content-Type':'application/json','apikey':PUBLISHABLE_KEY,'Authorization':'Bearer '+PUBLISHABLE_KEY},body:JSON.stringify(args)});const data=await res.json();if(!res.ok)throw new Error(data.message||'Der opstod en fejl');return data}
 function auth(){return {p_hold_id:saved.id,p_session_token:saved.token}}
 function showTeam(data){clearError();$('join').hidden=true;$('game').hidden=false;$('teamTitle').textContent=data.name;$('teamCode').textContent=data.holdkode||'Kun vist ved oprettelse';$('codeArea').hidden=!data.holdkode;if(data.submitted){showFinished();return}loadTasks()}
-function showFinished(){clearError();$('taskArea').hidden=true;$('summary').hidden=true;$('finished').hidden=false;$('progress').textContent='Afleveret';$('resultsStatus').textContent='';$('publicResults').hidden=true;loadPublicResults()}
+function showFinished(){clearError();$('taskArea').hidden=true;$('summary').hidden=true;$('finished').hidden=false;$('progress').textContent='Afleveret';$('finishedTeam').textContent=saved?.name||'Jeres hold';$('finishedPoints').textContent='–';$('finishedPlace').textContent='–';$('resultsBtn').textContent='Se hele ranglisten';$('resultsStatus').textContent='Henter jeres resultat…';$('publicResults').hidden=true;loadPublicResults(false)}
 async function loadTasks(){try{const data=await rpc('hent_messeopgaver',auth());tasks=Array.isArray(data)?data:[];if(!tasks.length){error('Der er endnu ingen opgaver til holdet.');return}current=Math.min(current,tasks.length-1);renderTask()}catch(e){error('Kunne ikke hente opgaver: '+e.message)}}
 async function uploadPhoto(task,file){
   if(!file)throw new Error('Vælg et billede først');
@@ -91,17 +91,25 @@ $('backTasks').addEventListener('click',()=>{current=0;renderTask()});
 $('joinForm').addEventListener('submit',async e=>{e.preventDefault();const btn=$('joinBtn');btn.disabled=true;btn.textContent='Opretter hold…';clearError();const name=$('team').value.trim();try{const data=await rpc('opret_messehold',{p_arrangementskode:$('code').value.trim(),p_holdnavn:name});const record=Array.isArray(data)?data[0]:data;if(!record?.hold_id||!record?.session_token)throw new Error('Supabase returnerede ikke holdoplysninger');saved={id:record.hold_id,holdkode:record.holdkode,token:record.session_token,name};localStorage.setItem(STORAGE,JSON.stringify(saved));$('resumeBtn').hidden=false;current=0;skipped=new Set();showTeam(saved)}catch(err){error(err.message||'Der opstod en fejl')}finally{btn.disabled=false;btn.textContent='Opret hold'}});
 
 // Ranglisten er synlig for afleverede hold uden manuel offentliggørelse.
-async function loadPublicResults(){
- const btn=$('resultsBtn');btn.disabled=true;$('resultsStatus').textContent='Henter resultater…';$('publicResults').hidden=true;
+async function loadPublicResults(showTable=true){
+ const btn=$('resultsBtn');btn.disabled=true;$('resultsStatus').textContent='Henter resultater…';
+ if(showTable)$('publicResults').hidden=true;
  try{
   if(!saved?.id||!saved?.token)throw new Error('Holdsession mangler');
   const rows=await rpc('hent_offentlig_rangliste',auth());
   if(!Array.isArray(rows))throw new Error('Uventet svar');
+  // Den nuværende Supabase-funktion returnerer holdnavn, men ikke hold-id.
+  // Ved navnesammenfald vises ingen usikker individuel placering.
+  const matching=rows.filter(r=>r.holdnavn===saved.name);
+  const own=matching.length===1?matching[0]:null;
+  $('finishedPoints').textContent=own?String(own.point):'–';
+  $('finishedPlace').textContent=own?String(own.placering)+'.':'–';
   const body=$('publicResultsBody');body.replaceChildren();
   for(const r of rows){const tr=document.createElement('tr');for(const value of [r.placering,r.holdnavn,r.point,Math.floor(r.tid_sekunder/60)+' min '+(r.tid_sekunder%60)+' sek']){const td=document.createElement('td');td.textContent=String(value);tr.append(td)}body.append(tr)}
-  $('resultsStatus').textContent=rows.length?'Aktuel rangliste:':'Ingen afleverede hold endnu.';
-  $('publicResults').hidden=!rows.length;
- }catch(e){$('resultsStatus').textContent='Kunne ikke hente ranglisten: '+e.message}
+  $('resultsStatus').textContent=matching.length>1?'Flere hold har samme navn. Se point og placering i ranglisten.':rows.length?'Resultaterne er opdateret.':'Ingen afleverede hold endnu.';
+  $('publicResults').hidden=!showTable||!rows.length;
+  btn.textContent=showTable?'Opdater ranglisten':'Se hele ranglisten';
+ }catch(e){$('resultsStatus').textContent='Kunne ikke hente resultater: '+e.message}
  finally{btn.disabled=false}
 }
-$('resultsBtn').addEventListener('click',loadPublicResults);
+$('resultsBtn').addEventListener('click',()=>loadPublicResults(true));

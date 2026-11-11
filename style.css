@@ -6,3 +6,6 @@ textarea{width:100%;border:1px solid #b8cbd8;border-radius:12px;padding:14px;fon
 #recoveryForm{margin-top:22px;border-top:1px solid #d6e3eb;padding-top:24px}#recoveryForm[hidden]{display:none!important}
 
 .separator{border:0;border-top:1px solid #e2edf3;margin:24px 0 6px}#recoveryForm{margin-top:20px}#recoveryForm h3{margin:0 0 10px}#recoveryForm[hidden]{display:none!important}
+
+/* Version 7.6 – afslutningsskærm */
+.finish-icon{font-size:54px;margin-bottom:8px}.finish-stats{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:20px 0}.finish-stat{background:#eff7fb;border-radius:15px;padding:18px 8px;display:flex;flex-direction:column;gap:6px}.finish-stat strong{font-size:32px;color:#075674}.finish-stat span{font-size:13px;color:#607286}#finished h3{font-size:21px;margin:14px 0}#publicResults{overflow-x:auto;text-align:left;margin-top:18px}#publicResults table{width:100%;border-collapse:collapse;font-size:14px}#publicResults th,#publicResults td{padding:11px 6px;border-bottom:1px solid #dce7ef}#publicResults th{color:#53677a}#finished .muted{line-height:1.6}
