@@ -1,0 +1,1 @@
+Version 7.3: QR-kode til hvert arrangement, PNG-download og kopiering af deltagerlink. QR-biblioteket indlæses fra cdnjs (internetforbindelse på administratorsiden kræves). Deltagerlinket bruger ?kode= og udfyldes allerede af app.js. Ingen ændringer i Supabase. Test QR-scanning og PNG på en telefon før arrangementet.
