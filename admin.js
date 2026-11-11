@@ -18,7 +18,7 @@ function fmtTime(seconds){if(seconds==null||seconds<0)return '—';seconds=Math.
 function fmtDate(iso){return iso?new Date(iso).toLocaleString('da-DK',{dateStyle:'short',timeStyle:'short'}):'—'}
 function cell(tr,value){const td=document.createElement('td');td.textContent=String(value);tr.append(td)}
 function empty(tbody,text){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=5;td.textContent=text;tr.append(td);tbody.append(tr)}
-async function loadEvents(){events=await getAll('arrangementer','id,titel,adgangskode,status');const select=$('eventSelect');select.replaceChildren();for(const ev of events){const opt=document.createElement('option');opt.value=ev.id;opt.textContent=`${ev.titel} (${ev.status})`;select.append(opt)}if(!events.length){selectedEvent='';$('totalTeams').textContent='0';$('finishedTeams').textContent='0';$('activeTeams').textContent='0';$('rankingBody').replaceChildren();$('teamsBody').replaceChildren();notice('Der findes ingen arrangementer endnu. Opret et ovenfor.');return}if(!events.some(e=>e.id===selectedEvent))selectedEvent=events[0].id;select.value=selectedEvent;await loadData();await loadTasksAdmin();await loadPhotoReviews();renderEventQR()}
+async function loadEvents(){events=await getAll('arrangementer','id,titel,adgangskode,status');const select=$('eventSelect');select.replaceChildren();for(const ev of events){const opt=document.createElement('option');opt.value=ev.id;opt.textContent=`${ev.titel} (${ev.status})`;select.append(opt)}if(!events.length){selectedEvent='';$('totalTeams').textContent='0';$('finishedTeams').textContent='0';$('activeTeams').textContent='0';$('rankingBody').replaceChildren();$('teamsBody').replaceChildren();notice('Der findes ingen arrangementer endnu. Opret et ovenfor.');return}if(!events.some(e=>e.id===selectedEvent))selectedEvent=events[0].id;select.value=selectedEvent;await loadData();await loadTasksAdmin();await loadPhotoReviews();renderEventQR();await loadPublication()}
 async function loadData(){if(!selectedEvent)return;notice('Henter oversigt…');const filter='&arrangement_id=eq.'+encodeURIComponent(selectedEvent);const teams=await getAll('hold','id,navn,status,startet_at,afleveret_at',filter);const teamIds=teams.map(t=>t.id);let answers=[],judgements=[];if(teamIds.length){const chunks=[];for(let i=0;i<teamIds.length;i+=100)chunks.push(teamIds.slice(i,i+100));for(const chunk of chunks){const ids=chunk.join(',');const res=await adminRequest('/rest/v1/besvarelser?select=id,hold_id&hold_id=in.('+ids+')&limit=10000');answers.push(...res)}if(answers.length){for(let i=0;i<answers.length;i+=100){const ids=answers.slice(i,i+100).map(a=>a.id).join(',');const res=await adminRequest('/rest/v1/bedoemmelser?select=besvarelse_id,point&besvarelse_id=in.('+ids+')&limit=10000');judgements.push(...res)}}}
 const answerTeam=new Map(answers.map(a=>[a.id,a.hold_id]));const points=new Map(teams.map(t=>[t.id,0]));for(const j of judgements){const id=answerTeam.get(j.besvarelse_id);if(id)points.set(id,(points.get(id)||0)+Number(j.point||0))}
 const finished=teams.filter(t=>t.status==='afleveret'&&t.afleveret_at);$('totalTeams').textContent=teams.length;$('finishedTeams').textContent=finished.length;$('activeTeams').textContent=teams.filter(t=>t.status==='aktiv').length;
@@ -44,8 +44,8 @@ $('createEventForm').addEventListener('submit',async e=>{
  }catch(err){result.textContent='Kunne ikke oprette arrangement: '+err.message}
  finally{btn.disabled=false}
 });
-$('eventSelect').addEventListener('change',async()=>{selectedEvent=$('eventSelect').value;try{await loadData();await loadTasksAdmin();await loadPhotoReviews();renderEventQR()}catch(e){notice('Kunne ikke hente data: '+e.message)}});
-$('refreshBtn').addEventListener('click',async()=>{try{await loadData();await loadTasksAdmin();await loadPhotoReviews();renderEventQR()}catch(e){notice('Kunne ikke opdatere: '+e.message)}});
+$('eventSelect').addEventListener('change',async()=>{selectedEvent=$('eventSelect').value;try{await loadData();await loadTasksAdmin();await loadPhotoReviews();renderEventQR();await loadPublication()}catch(e){notice('Kunne ikke hente data: '+e.message)}});
+$('refreshBtn').addEventListener('click',async()=>{try{await loadData();await loadTasksAdmin();await loadPhotoReviews();renderEventQR();await loadPublication()}catch(e){notice('Kunne ikke opdatere: '+e.message)}});
 $('logoutBtn').addEventListener('click',async()=>{try{if(session?.access_token)await request('/auth/v1/logout',{method:'POST',headers:headers(session.access_token)})}catch{}showLogin();notice('Du er logget ud.')});
 try{session=JSON.parse(sessionStorage.getItem(AUTH_KEY)||'null')}catch{}if(session?.access_token)boot();
 
@@ -136,3 +136,26 @@ $('qrDownload').addEventListener('click',()=>{
  $('qrStatus').textContent='QR-koden er klar til print.';
  }catch(e){$('qrStatus').textContent='Download mislykkedes: '+e.message}
 });
+
+// Version 7.4: resultater offentliggøres kun via administratorbeskyttet RPC.
+async function loadPublication(){
+ const status=$('publishState'),pub=$('publishBtn'),unpub=$('unpublishBtn');
+ pub.disabled=true;unpub.disabled=true;
+ if(!selectedEvent){status.textContent='Vælg et arrangement.';return}
+ try{
+  const data=await adminRequest('/rest/v1/rpc/hent_offentliggoerelsesstatus',{method:'POST',body:JSON.stringify({p_arrangement_id:selectedEvent})});
+  const active=data===true;
+  status.textContent=active?'Resultaterne er offentliggjort for deltagerne.':'Resultaterne er endnu ikke offentliggjort.';
+  pub.disabled=active;unpub.disabled=!active;$('publishError').textContent='';
+ }catch(e){status.textContent='Status kunne ikke hentes.';$('publishError').textContent=e.message}
+}
+async function changePublication(value){
+ if(!selectedEvent)return;
+ const msg=value?'Offentliggør ranglisten for alle deltagere nu? Kontrollér først den manuelle bedømmelse.':'Skjul ranglisten for deltagerne igen?';
+ if(!confirm(msg))return;
+ $('publishBtn').disabled=true;$('unpublishBtn').disabled=true;$('publishError').textContent='Gemmer…';
+ try{await adminRequest('/rest/v1/rpc/saet_offentliggoerelse',{method:'POST',body:JSON.stringify({p_arrangement_id:selectedEvent,p_offentliggjort:value})});await loadPublication()}
+ catch(e){$('publishError').textContent='Kunne ikke ændre offentliggørelsen: '+e.message;await loadPublication()}
+}
+$('publishBtn').addEventListener('click',()=>changePublication(true));
+$('unpublishBtn').addEventListener('click',()=>changePublication(false));
