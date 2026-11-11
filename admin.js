@@ -149,3 +149,20 @@ $('qrDownload').addEventListener('click',()=>{
  }catch(e){$('qrStatus').textContent='Download mislykkedes: '+e.message}
 });
 
+
+// Version 7.9: Permanent sletning via serverfunktion (aldrig service role i browseren).
+$('deleteEventBtn').addEventListener('click', async () => {
+ const ev=events.find(e=>e.id===selectedEvent), status=$('deleteEventStatus'), btn=$('deleteEventBtn');
+ if(!ev){status.textContent='Vælg først et arrangement.';return}
+ if(!confirm('Er du sikker på, at du vil slette "'+ev.titel+'"?\n\nAlle opgaver, hold, besvarelser, point og billeder slettes permanent.\n\nDette kan IKKE fortrydes.'))return;
+ const typed=prompt('Sidste sikkerhedskontrol: Skriv arrangementets navn præcis som her for at bekræfte sletningen:\n\n'+ev.titel);
+ if(typed===null)return;
+ if(typed!==ev.titel){status.textContent='Sletning annulleret: Navnet stemte ikke.';return}
+ btn.disabled=true;status.textContent='Sletter billeder og arrangement. Vent venligst…';
+ try{
+  const data=await adminRequest('/functions/v1/slet-messearrangement',{method:'POST',body:JSON.stringify({arrangement_id:ev.id,bekraeft_navn:typed})});
+  if(!data?.ok)throw new Error('Serveren bekræftede ikke sletningen');
+  selectedEvent='';await loadEvents();status.textContent='Arrangementet er slettet permanent ('+data.deleted_photos+' billede(r) fjernet).';
+ }catch(e){status.textContent='Sletning mislykkedes: '+e.message}
+ finally{btn.disabled=false}
+});
