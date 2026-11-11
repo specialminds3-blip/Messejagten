@@ -70,40 +70,52 @@ async function signedPhotoUrl(path){
  if(/^https:\/\//i.test(signedPath))return signedPath;
  return BASE+(signedPath.startsWith('/storage/v1/')?signedPath:'/storage/v1/'+signedPath.replace(/^\/+/,''));
 }
+// Fotos er skjult, indtil administrator åbner det pågældende hold.
 async function loadPhotoReviews(){
  const list=$('photoReviews');if(!list||!selectedEvent)return;
- list.replaceChildren();$('photoReviewStatus').textContent='Henter fotos…';
+ list.replaceChildren();$('photoReviewStatus').textContent='Henter billedoversigt…';
  try{
   const teams=await getAll('hold','id,navn,status','&arrangement_id=eq.'+encodeURIComponent(selectedEvent));
   const submitted=teams.filter(t=>t.status==='afleveret');
   const photos=eventTasks.filter(t=>t.type==='foto');
   if(!submitted.length||!photos.length){$('photoReviewStatus').textContent='Ingen afleverede fotoopgaver endnu.';return}
-  const teamMap=new Map(submitted.map(t=>[t.id,t]));const taskMap=new Map(photos.map(t=>[t.id,t]));let answers=[];
-  for(let i=0;i<submitted.length;i+=75){const ids=submitted.slice(i,i+75).map(t=>t.id).join(',');
-   const rows=await adminRequest('/rest/v1/besvarelser?select=id,hold_id,opgave_id,svar_tekst,billede_sti&hold_id=in.('+ids+')&billede_sti=not.is.null&limit=10000');answers.push(...rows)}
+  const teamMap=new Map(submitted.map(t=>[t.id,t])),taskMap=new Map(photos.map(t=>[t.id,t]));let answers=[];
+  for(let i=0;i<submitted.length;i+=75){const ids=submitted.slice(i,i+75).map(t=>t.id).join(',');answers.push(...await adminRequest('/rest/v1/besvarelser?select=id,hold_id,opgave_id,billede_sti&hold_id=in.('+ids+')&billede_sti=not.is.null&limit=10000'))}
   answers=answers.filter(a=>taskMap.has(a.opgave_id)&&teamMap.has(a.hold_id));
-  if(!answers.length){$('photoReviewStatus').textContent='Ingen afleverede fotoopgaver endnu.';return}
-  let reviews=[];for(let i=0;i<answers.length;i+=75){const ids=answers.slice(i,i+75).map(a=>a.id).join(',');reviews.push(...await adminRequest('/rest/v1/bedoemmelser?select=id,besvarelse_id,point,kommentar&besvarelse_id=in.('+ids+')&limit=10000'))}
-  const reviewMap=new Map(reviews.map(r=>[r.besvarelse_id,r]));
-  $('photoReviewStatus').textContent=answers.length+' fotoopgave(r) fra afleverede hold';
-  for(const answer of answers){const task=taskMap.get(answer.opgave_id),team=teamMap.get(answer.hold_id),review=reviewMap.get(answer.id);
-   const card=document.createElement('div');card.className='photo-review';const h=document.createElement('h3');h.textContent=team.navn+' · '+task.titel;card.append(h);
-   const img=document.createElement('img');img.className='review-image';img.alt='Indsendt foto fra '+team.navn;img.loading='lazy';
-   const imgStatus=document.createElement('p');imgStatus.className='muted';imgStatus.textContent='Henter privat billede…';card.append(img,imgStatus);
-   signedPhotoUrl(answer.billede_sti).then(url=>{img.src=url;imgStatus.textContent='Billedlinket udløber efter 2 minutter. Opdater for at hente igen.'}).catch(e=>{imgStatus.textContent='Kunne ikke hente billede: '+e.message});
-   if(answer.svar_tekst){const note=document.createElement('p');note.textContent='Bemærkning: '+answer.svar_tekst;card.append(note)}
-   const form=document.createElement('form');const label=document.createElement('label');label.textContent='Point (0–'+task.max_point+')';const points=document.createElement('input');points.type='number';points.min='0';points.max=String(task.max_point);points.step='1';points.required=true;points.value=review?String(review.point):'0';
-   const comment=document.createElement('textarea');comment.rows=2;comment.maxLength=2000;comment.placeholder='Kommentar (valgfri)';comment.value=review?.kommentar||'';
-   const save=document.createElement('button');save.type='submit';save.textContent=review?'Opdater point':'Gem point';const status=document.createElement('p');status.setAttribute('role','status');status.className='muted';
-   form.append(label,points,comment,save,status);form.addEventListener('submit',async e=>{e.preventDefault();const value=Number(points.value);if(!Number.isInteger(value)||value<0||value>Number(task.max_point)){status.textContent='Ugyldigt pointtal';return}save.disabled=true;status.textContent='Gemmer…';
-    try{const payload={besvarelse_id:answer.id,point:value,kommentar:comment.value.trim()||null};
-      if(review){await adminRequest('/rest/v1/bedoemmelser?id=eq.'+encodeURIComponent(review.id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({point:value,kommentar:payload.kommentar})})}
-      else{const created=await adminRequest('/rest/v1/bedoemmelser?select=id',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify(payload)});if(!created?.[0]?.id)throw new Error('Bedømmelsen blev ikke bekræftet');reviewMap.set(answer.id,{...payload,id:created[0].id});}
-      status.textContent='✓ Point gemt';save.textContent='Opdater point';await loadData();
-    }catch(err){status.textContent='Kunne ikke gemme: '+err.message}finally{save.disabled=false}});
-   card.append(form);list.append(card)
+  $('photoReviewStatus').textContent=answers.length+' billede(r) fra '+new Set(answers.map(a=>a.hold_id)).size+' afleverede hold. Klik på et hold for at se billederne.';
+  const grouped=new Map();for(const answer of answers){if(!grouped.has(answer.hold_id))grouped.set(answer.hold_id,[]);grouped.get(answer.hold_id).push(answer)}
+  for(const [id,items] of grouped){
+   const team=teamMap.get(id),details=document.createElement('details');details.className='photo-team';
+   const summary=document.createElement('summary');summary.textContent=team.navn+' · '+items.length+' billede(r)';details.append(summary);
+   let loaded=false;
+   details.addEventListener('toggle',async()=>{
+    if(!details.open||loaded)return;loaded=true;
+    const status=document.createElement('p');status.className='muted';status.textContent='Henter billeder…';details.append(status);
+    try{
+     const reviews=[];for(let i=0;i<items.length;i+=75){const ids=items.slice(i,i+75).map(a=>a.id).join(',');reviews.push(...await adminRequest('/rest/v1/bedoemmelser?select=id,besvarelse_id,point,kommentar&besvarelse_id=in.('+ids+')&limit=10000'))}
+     const reviewMap=new Map(reviews.map(r=>[r.besvarelse_id,r]));status.remove();
+     for(const answer of items){
+      const task=taskMap.get(answer.opgave_id),review=reviewMap.get(answer.id),card=document.createElement('div');card.className='photo-review';
+      const h=document.createElement('h3');h.textContent=task.titel;card.append(h);
+      const img=document.createElement('img');img.className='review-image';img.alt='Indsendt foto fra '+team.navn;img.loading='lazy';
+      const imgStatus=document.createElement('p');imgStatus.className='muted';imgStatus.textContent='Henter billede…';card.append(img,imgStatus);
+      signedPhotoUrl(answer.billede_sti).then(url=>{img.src=url;imgStatus.textContent='Privat billedlink gælder i 2 minutter. Opdater siden ved behov.'}).catch(e=>{imgStatus.textContent='Kunne ikke hente billede: '+e.message});
+      const toggle=document.createElement('button');toggle.type='button';toggle.className='secondary task-small';toggle.textContent='Justér point (nødløsning)';card.append(toggle);
+      const form=document.createElement('form');form.hidden=true;
+      const label=document.createElement('label');label.textContent='Point (0–10)';const points=document.createElement('input');points.type='number';points.min='0';points.max='10';points.step='10';points.required=true;points.value=review?String(review.point):'0';
+      const save=document.createElement('button');save.type='submit';save.textContent='Gem point';const feedback=document.createElement('p');feedback.className='muted';form.append(label,points,save,feedback);
+      toggle.addEventListener('click',()=>{form.hidden=!form.hidden;toggle.textContent=form.hidden?'Justér point (nødløsning)':'Skjul pointjustering'});
+      form.addEventListener('submit',async e=>{e.preventDefault();const value=Number(points.value);if(value!==0&&value!==10){feedback.textContent='Vælg 0 eller 10 point';return}save.disabled=true;feedback.textContent='Gemmer…';try{
+       if(review){await adminRequest('/rest/v1/bedoemmelser?id=eq.'+encodeURIComponent(review.id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({point:value,kommentar:'Manuelt justeret'})});review.point=value}
+       else{const created=await adminRequest('/rest/v1/bedoemmelser?select=id',{method:'POST',headers:{Prefer:'return=representation'},body:JSON.stringify({besvarelse_id:answer.id,point:value,kommentar:'Manuelt justeret'})});if(created?.[0])reviewMap.set(answer.id,{...created[0],point:value})}
+       feedback.textContent='✓ Point gemt';await loadData();
+      }catch(err){feedback.textContent='Kunne ikke gemme: '+err.message}finally{save.disabled=false}});
+      card.append(form);details.append(card);
+     }
+    }catch(e){status.textContent='Kunne ikke hente billeder: '+e.message;loaded=false}
+   });list.append(details)
   }
- }catch(e){$('photoReviewStatus').textContent='Kunne ikke hente fotoopgaver: '+e.message}
+ }catch(e){$('photoReviewStatus').textContent='Kunne ikke hente billedoversigt: '+e.message}
 }
 
 // Version 7.3: arrangementets deltagerlink og printvenlig QR-kode.
