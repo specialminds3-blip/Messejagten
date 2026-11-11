@@ -6,7 +6,7 @@ const $=id=>document.getElementById(id);
 let saved=null,tasks=[],current=0,skipped=new Set();
 try{saved=JSON.parse(localStorage.getItem(STORAGE)||'null')}catch{}
 const qs=new URLSearchParams(location.search);
-if(qs.has('kode'))$('code').value=qs.get('kode');
+if(qs.has('kode')){$('code').value=qs.get('kode');$('recoveryCode').value=qs.get('kode')}
 if(saved?.id&&saved?.token)$('resumeBtn').hidden=false;
 function error(msg){$('notice').textContent=msg;$('notice').hidden=false;window.scrollTo({top:0,behavior:'smooth'})}
 function clearError(){$('notice').hidden=true}
@@ -51,6 +51,36 @@ $('submitBtn').addEventListener('click',async()=>{
   }catch(e){error('Afleveringen lykkedes ikke: '+e.message);btn.disabled=false;btn.textContent='Aflever Messejagten'}
 });
 $('resumeBtn').addEventListener('click',()=>{if(saved)showTeam(saved)});
+$('showRecoveryBtn').addEventListener('click',()=>{clearError();$('recoveryForm').hidden=false;$('showRecoveryBtn').hidden=true;$('recoveryCode').value=$('recoveryCode').value||$('code').value;$('recoveryTeamCode').focus()});
+$('cancelRecoveryBtn').addEventListener('click',()=>{$('recoveryForm').hidden=true;$('showRecoveryBtn').hidden=false;clearError()});
+$('recoveryForm').addEventListener('submit',async e=>{
+  e.preventDefault();clearError();const btn=$('recoverBtn');btn.disabled=true;btn.textContent='Genoptager…';
+  try{
+    const arrangement=$('recoveryCode').value.trim();const holdkode=$('recoveryTeamCode').value.trim().toLowerCase();
+    if(!/^[0-9a-f]{12}$/.test(holdkode))throw new Error('Holdkoden skal bestå af 12 tegn (0-9 og a-f)');
+    if(saved?.id&&!window.confirm('Dette erstatter det hold, som er gemt på denne telefon. Fortsæt?'))return;
+    const data=await rpc('genoptag_messehold',{p_arrangementskode:arrangement,p_holdkode:holdkode});
+    const record=Array.isArray(data)?data[0]:data;
+    if(!record?.hold_id||!record?.session_token||!record?.holdnavn)throw new Error('Supabase returnerede ikke gyldige holdoplysninger');
+    saved={id:record.hold_id,name:record.holdnavn,token:record.session_token,holdkode,submitted:false};
+    localStorage.setItem(STORAGE,JSON.stringify(saved));$('resumeBtn').hidden=false;
+    current=0;skipped=new Set();$('recoveryForm').reset();$('recoveryForm').hidden=true;$('showRecoveryBtn').hidden=false;showTeam(saved);
+  }catch(err){error('Kunne ikke genoptage hold: '+(err.message||'Ukendt fejl'))}
+  finally{btn.disabled=false;btn.textContent='Genoptag hold'}
+});
+$('showRecoveryBtn').addEventListener('click',()=>{clearError();$('recoveryForm').hidden=false;$('showRecoveryBtn').hidden=true;$('recoveryCode').value=$('code').value.trim()||qs.get('kode')||'';$('recoveryTeamCode').focus()});
+$('cancelRecoveryBtn').addEventListener('click',()=>{$('recoveryForm').hidden=true;$('showRecoveryBtn').hidden=false;clearError()});
+$('recoveryForm').addEventListener('submit',async e=>{
+  e.preventDefault();clearError();const btn=$('recoverBtn');btn.disabled=true;btn.textContent='Genoptager…';
+  try{
+    const data=await rpc('genoptag_messehold',{p_arrangementskode:$('recoveryCode').value.trim(),p_holdkode:$('recoveryTeamCode').value.trim().toLowerCase()});
+    const record=Array.isArray(data)?data[0]:data;
+    if(!record?.hold_id||!record?.session_token||!record?.holdnavn)throw new Error('Supabase returnerede ikke gyldige holdoplysninger');
+    saved={id:record.hold_id,holdkode:$('recoveryTeamCode').value.trim().toLowerCase(),token:record.session_token,name:record.holdnavn};
+    localStorage.setItem(STORAGE,JSON.stringify(saved));$('resumeBtn').hidden=false;current=0;skipped=new Set();showTeam(saved);
+  }catch(err){error('Kunne ikke genoptage holdet: '+(err.message||'Ukendt fejl'))}
+  finally{btn.disabled=false;btn.textContent='Genoptag hold'}
+});
 $('newBtn').addEventListener('click',()=>{$('game').hidden=true;$('join').hidden=false;clearError()});
 $('copyBtn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(saved.holdkode);$('copyBtn').textContent='Kopieret!'}catch{error('Kunne ikke kopiere automatisk.')}});
 $('saveBtn').addEventListener('click',saveAnswer);
