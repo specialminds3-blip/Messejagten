@@ -11,3 +11,5 @@
 .photo-team{background:#f6fafc;border:1px solid #dbe8ee;border-radius:14px;margin:12px 0;padding:12px 16px}.photo-team summary{cursor:pointer;font-weight:700;color:#14364d;padding:8px 0}.photo-team[open] summary{border-bottom:1px solid #dbe8ee;margin-bottom:10px}.photo-review form[hidden]{display:none!important}
 
 .delete-danger{background:#b42318!important;color:white!important;border-color:#b42318!important}.delete-danger:hover{background:#8e1b12!important}.delete-danger:disabled{opacity:.6;cursor:wait}
+
+#deleteEventPanel{padding:15px 20px}#deleteEventPanel h2{font-size:16px;margin:0 0 5px}#deleteEventPanel p{font-size:12px}.delete-actions{display:flex;justify-content:flex-end}.delete-actions button{width:auto!important;flex:none!important;font-size:12px;padding:7px 11px;margin:0;border-radius:7px}

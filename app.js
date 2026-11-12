@@ -81,7 +81,7 @@ $('recoveryForm').addEventListener('submit',async e=>{
   }catch(err){error('Kunne ikke genoptage holdet: '+(err.message||'Ukendt fejl'))}
   finally{btn.disabled=false;btn.textContent='Genoptag hold'}
 });
-$('newBtn').addEventListener('click',()=>{$('game').hidden=true;$('join').hidden=false;clearError()});
+
 $('copyBtn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(saved.holdkode);$('copyBtn').textContent='Kopieret!'}catch{error('Kunne ikke kopiere automatisk.')}});
 $('saveBtn').addEventListener('click',async()=>{const ok=await saveAnswer();if(ok && tasks.every(t=>Boolean(t.billede_sti || (t.svar_tekst!=null && String(t.svar_tekst).trim()!==''))))summary();});
 $('skipBtn').addEventListener('click',()=>{skipped.add(tasks[current].opgave_id);current++;if(current>=tasks.length)summary();else renderTask()});
@@ -113,3 +113,28 @@ async function loadPublicResults(showTable=true){
  finally{btn.disabled=false}
 }
 $('resultsBtn').addEventListener('click',()=>loadPublicResults(true));
+
+// Deltagernes billedslideshow bruger en særskilt serverfunktion, som kontrollerer holdsessionen.
+let mobilePhotos=[],mobileIndex=-1,mobileTimer=null,mobileLoading=false;
+async function loadMobilePhotos(){
+ if(mobileLoading)return;mobileLoading=true;
+ try{
+  const response=await fetch(URL_BASE+'/functions/v1/messe-slideshow',{method:'POST',headers:{'Content-Type':'application/json','apikey':PUBLISHABLE_KEY,'Authorization':'Bearer '+PUBLISHABLE_KEY},body:JSON.stringify(auth())});
+  const data=await response.json().catch(()=>({}));if(!response.ok)throw Error(data.error||'Slideshowet kunne ikke hentes');
+  mobilePhotos=Array.isArray(data.photos)?data.photos:[];
+  if(!mobilePhotos.length){$('mobileSlideStatus').textContent='Der er endnu ingen billeder i slideshowet.';return}
+  if(mobileIndex<0||mobileIndex>=mobilePhotos.length)mobileIndex=0;
+  const photo=mobilePhotos[mobileIndex];$('mobileSlideImage').src=photo.url;
+  $('mobileSlideCaption').textContent=photo.team+' · '+photo.task;
+  $('mobileSlideCounter').textContent=(mobileIndex+1)+' / '+mobilePhotos.length;
+  $('mobileSlideStatus').textContent='';
+ }catch(e){$('mobileSlideStatus').textContent=e.message+' (Kontrollér at slideshow-funktionen er installeret i Supabase.)'}finally{mobileLoading=false}
+}
+$('mobileSlideshowBtn').addEventListener('click',async()=>{
+ $('mobileSlideshow').hidden=false;mobileIndex=-1;$('mobileSlideStatus').textContent='Henter billeder…';await loadMobilePhotos();
+ clearInterval(mobileTimer);mobileTimer=setInterval(async()=>{
+  if(mobilePhotos.length){mobileIndex=(mobileIndex+1)%mobilePhotos.length;const p=mobilePhotos[mobileIndex];$('mobileSlideImage').src=p.url;$('mobileSlideCaption').textContent=p.team+' · '+p.task;$('mobileSlideCounter').textContent=(mobileIndex+1)+' / '+mobilePhotos.length}
+  if(mobileIndex===0)await loadMobilePhotos();
+ },5000);
+});
+$('closeMobileSlideshow').addEventListener('click',()=>{clearInterval(mobileTimer);mobileTimer=null;$('mobileSlideshow').hidden=true;$('mobileSlideImage').removeAttribute('src')});
