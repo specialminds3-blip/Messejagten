@@ -13,3 +13,38 @@
 .delete-danger{background:#b42318!important;color:white!important;border-color:#b42318!important}.delete-danger:hover{background:#8e1b12!important}.delete-danger:disabled{opacity:.6;cursor:wait}
 
 #deleteEventPanel{padding:15px 20px}#deleteEventPanel h2{font-size:16px;margin:0 0 5px}#deleteEventPanel p{font-size:12px}.delete-actions{display:flex;justify-content:flex-end}.delete-actions button{width:auto!important;flex:none!important;font-size:12px;padding:7px 11px;margin:0;border-radius:7px}
+
+/* Centrering af QR-kode */
+#qrImage {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    margin: 20px auto;
+    width: 100%;
+}
+
+#qrImage img,
+#qrImage canvas {
+    max-width: 100%;
+    height: auto;
+    margin: 0 auto;
+}
+
+/* Blå slideshow-knap */
+a[href="slideshow.html"] {
+    display: block;
+    width: 100%;
+    background: #086b92;
+    color: white;
+    font-size: 16px;
+    font-weight: 700;
+    padding: 15px 20px;
+    border-radius: 12px;
+    text-align: center;
+    text-decoration: none;
+    margin-top: 20px;
+}
+
+a[href="slideshow.html"]:hover {
+    background: #075674;
+}
