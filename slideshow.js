@@ -20,7 +20,7 @@ $('logout').addEventListener('click',()=>{clearInterval(poll);clearInterval(cycl
 
 async function refreshRanking(){
  const id=$('eventSelect').value;if(!id)return;
- const teams=await all('hold','id,navn,status,startet_at,afleveret_at','&arrangement_id=eq.'+encodeURIComponent(id));
+ const teams=await all('hold','id,navn','&arrangement_id=eq.'+encodeURIComponent(id)+'&skjul_slideshow=eq.false');
  const finished=teams.filter(t=>t.status==='afleveret'&&t.afleveret_at);
  const points=new Map(finished.map(t=>[t.id,0]));
  for(let i=0;i<finished.length;i+=75){
