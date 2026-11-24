@@ -214,7 +214,7 @@ const taskPanel = $('tasksPanel');
 const taskIntro = taskPanel.querySelector('p.muted');
 foldAdminForm('taskFormDetails','taskForm','Opret opgave',taskIntro);
 // v8.3 – holdadministration. Aktiver først efter installation af Edge Function.
-const TEAM_DELETE_ENABLED = false;
+const TEAM_DELETE_ENABLED = true;
 let teamEditing=false, teamDeleteBusy=false, teamCount=0;
 const teamPanel=$('teamsBody').closest('section');
 const teamHeading=teamPanel.querySelector('h2');
