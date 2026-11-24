@@ -13,17 +13,18 @@ async function adminRequest(path,options={}){let t=await token();try{return awai
 async function verifyAdmin(){const result=await adminRequest('/rest/v1/rpc/er_administrator',{method:'POST',body:'{}'});if(result!==true)throw new Error('Denne konto har ikke administratorrettigheder')}
 async function getAll(table,select,filter=''){const rows=[];for(let offset=0;offset<10000;offset+=500){const path=`/rest/v1/${table}?select=${encodeURIComponent(select)}${filter}&order=${table==='hold'?'startet_at.desc':'id.asc'}&limit=500&offset=${offset}`;const part=await adminRequest(path);if(!Array.isArray(part))throw new Error('Uventet svar fra '+table);rows.push(...part);if(part.length<500)return rows}throw new Error('Der er mere end 10.000 rækker; kontakt administrator')}
 function showDashboard(){ $('loginPanel').hidden=true;$('dashboard').hidden=false; $('password').value=''}
-function showLogin(){session=null;sessionStorage.removeItem(AUTH_KEY);$('dashboard').hidden=true;$('loginPanel').hidden=false}
+function showLogin(){closeTeamEditing();session=null;sessionStorage.removeItem(AUTH_KEY);$('dashboard').hidden=true;$('loginPanel').hidden=false}
 function fmtTime(seconds){if(seconds==null||seconds<0)return '—';seconds=Math.floor(seconds);return `${Math.floor(seconds/3600)?Math.floor(seconds/3600)+' t ':''}${Math.floor(seconds%3600/60)} min ${seconds%60} sek`}
 function fmtDate(iso){return iso?new Date(iso).toLocaleString('da-DK',{dateStyle:'short',timeStyle:'short'}):'—'}
 function cell(tr,value){const td=document.createElement('td');td.textContent=String(value);tr.append(td)}
 function empty(tbody,text){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=5;td.textContent=text;tr.append(td);tbody.append(tr)}
 async function loadEvents(){events=await getAll('arrangementer','id,titel,adgangskode,status');const select=$('eventSelect');select.replaceChildren();for(const ev of events){const opt=document.createElement('option');opt.value=ev.id;opt.textContent=`${ev.titel} (${ev.status})`;select.append(opt)}if(!events.length){selectedEvent='';$('totalTeams').textContent='0';$('finishedTeams').textContent='0';$('activeTeams').textContent='0';$('rankingBody').replaceChildren();$('teamsBody').replaceChildren();notice('Der findes ingen arrangementer endnu. Opret et ovenfor.');return}if(!events.some(e=>e.id===selectedEvent))selectedEvent=events[0].id;select.value=selectedEvent;await loadData();await loadTasksAdmin();renderEventQR();}
-async function loadData(){if(!selectedEvent)return;notice('Henter oversigt…');const filter='&arrangement_id=eq.'+encodeURIComponent(selectedEvent);const teams=await getAll('hold','id,navn,status,startet_at,afleveret_at',filter);const teamIds=teams.map(t=>t.id);let answers=[],judgements=[];if(teamIds.length){const chunks=[];for(let i=0;i<teamIds.length;i+=100)chunks.push(teamIds.slice(i,i+100));for(const chunk of chunks){const ids=chunk.join(',');const res=await adminRequest('/rest/v1/besvarelser?select=id,hold_id&hold_id=in.('+ids+')&limit=10000');answers.push(...res)}if(answers.length){for(let i=0;i<answers.length;i+=100){const ids=answers.slice(i,i+100).map(a=>a.id).join(',');const res=await adminRequest('/rest/v1/bedoemmelser?select=besvarelse_id,point&besvarelse_id=in.('+ids+')&limit=10000');judgements.push(...res)}}}
+async function loadData(){if(!selectedEvent)return;const overviewEvent=selectedEvent;notice('Henter oversigt…');const filter='&arrangement_id=eq.'+encodeURIComponent(selectedEvent);const teams=await getAll('hold','id,navn,status,startet_at,afleveret_at',filter);const teamIds=teams.map(t=>t.id);let answers=[],judgements=[];if(teamIds.length){const chunks=[];for(let i=0;i<teamIds.length;i+=100)chunks.push(teamIds.slice(i,i+100));for(const chunk of chunks){const ids=chunk.join(',');const res=await adminRequest('/rest/v1/besvarelser?select=id,hold_id&hold_id=in.('+ids+')&limit=10000');answers.push(...res)}if(answers.length){for(let i=0;i<answers.length;i+=100){const ids=answers.slice(i,i+100).map(a=>a.id).join(',');const res=await adminRequest('/rest/v1/bedoemmelser?select=besvarelse_id,point&besvarelse_id=in.('+ids+')&limit=10000');judgements.push(...res)}}}
+if(overviewEvent!==selectedEvent||!session)return;
 const answerTeam=new Map(answers.map(a=>[a.id,a.hold_id]));const points=new Map(teams.map(t=>[t.id,0]));for(const j of judgements){const id=answerTeam.get(j.besvarelse_id);if(id)points.set(id,(points.get(id)||0)+Number(j.point||0))}
 const finished=teams.filter(t=>t.status==='afleveret'&&t.afleveret_at);$('totalTeams').textContent=teams.length;$('finishedTeams').textContent=finished.length;$('activeTeams').textContent=teams.filter(t=>t.status==='aktiv').length;
 const elapsed=t=>Math.max(0,Math.floor((new Date(t.afleveret_at)-new Date(t.startet_at))/1000));finished.sort((a,b)=>(points.get(b.id)||0)-(points.get(a.id)||0)||elapsed(a)-elapsed(b)||new Date(a.afleveret_at)-new Date(b.afleveret_at));const rb=$('rankingBody');rb.replaceChildren();finished.forEach((t,i)=>{const tr=document.createElement('tr');[i+1,t.navn,points.get(t.id)||0,fmtTime(elapsed(t))].forEach(v=>cell(tr,v));rb.append(tr)});if(!finished.length)empty(rb,'Ingen afleverede hold endnu');
-const tb=$('teamsBody');tb.replaceChildren();teams.forEach(t=>{const tr=document.createElement('tr');[t.navn,t.status,points.get(t.id)||0,fmtDate(t.startet_at),fmtDate(t.afleveret_at)].forEach(v=>cell(tr,v));tb.append(tr)});if(!teams.length)empty(tb,'Ingen hold endnu');notice('')}
+const tb=$('teamsBody');tb.replaceChildren();teams.forEach(t=>{const tr=document.createElement('tr');[t.navn,t.status,points.get(t.id)||0,fmtDate(t.startet_at),fmtDate(t.afleveret_at)].forEach(v=>cell(tr,v));appendTeamAction(tr,t,overviewEvent);tb.append(tr)});if(!teams.length)empty(tb,'Ingen hold endnu');updateTeamControls(teams.length);notice('')}
 async function boot(){try{await verifyAdmin();showDashboard();await loadEvents()}catch(e){showLogin();notice('Kunne ikke åbne administrationen: '+e.message)}}
 $('loginForm').addEventListener('submit',async e=>{e.preventDefault();const btn=$('loginBtn');btn.disabled=true;notice('');try{const data=await request('/auth/v1/token?grant_type=password',{method:'POST',headers:{'apikey':KEY,'Content-Type':'application/json'},body:JSON.stringify({email:$('email').value.trim(),password:$('password').value})});session=data;session.expires_at=Math.floor(Date.now()/1000)+data.expires_in;sessionStorage.setItem(AUTH_KEY,JSON.stringify(session));await boot()}catch(err){notice('Login mislykkedes: '+err.message)}finally{btn.disabled=false}});
 $('newStatus').addEventListener('change',()=>{$('openWarning').hidden=$('newStatus').value!=='aaben'});
@@ -40,11 +41,11 @@ $('createEventForm').addEventListener('submit',async e=>{
     method:'POST',headers:{'Prefer':'return=representation'},body:JSON.stringify({titel,beskrivelse:beskrivelse||null,adgangskode,status})
    });
    if(!Array.isArray(data)||!data[0]?.id)throw new Error('Arrangementet blev måske oprettet, men svaret var uventet. Opdater oversigten før du prøver igen.');
-   selectedEvent=data[0].id;await loadEvents();result.textContent='Arrangementet er oprettet! Du kan nu vælge det i oversigten.';
+   closeTeamEditing();selectedEvent=data[0].id;await loadEvents();result.textContent='Arrangementet er oprettet! Du kan nu vælge det i oversigten.';
  }catch(err){result.textContent='Kunne ikke oprette arrangement: '+err.message}
  finally{btn.disabled=false}
 });
-$('eventSelect').addEventListener('change',async()=>{selectedEvent=$('eventSelect').value;try{await loadData();await loadTasksAdmin();renderEventQR();}catch(e){notice('Kunne ikke hente data: '+e.message)}});
+$('eventSelect').addEventListener('change',async()=>{closeTeamEditing();selectedEvent=$('eventSelect').value;try{await loadData();await loadTasksAdmin();renderEventQR();}catch(e){notice('Kunne ikke hente data: '+e.message)}});
 $('refreshBtn').addEventListener('click',async()=>{try{await loadData();await loadTasksAdmin();renderEventQR();}catch(e){notice('Kunne ikke opdatere: '+e.message)}});
 $('logoutBtn').addEventListener('click',async()=>{try{if(session?.access_token)await request('/auth/v1/logout',{method:'POST',headers:headers(session.access_token)})}catch{}showLogin();notice('Du er logget ud.')});
 try{session=JSON.parse(sessionStorage.getItem(AUTH_KEY)||'null')}catch{}if(session?.access_token)boot();
@@ -162,7 +163,7 @@ $('deleteEventBtn').addEventListener('click', async () => {
  try{
   const data=await adminRequest('/functions/v1/slet-messearrangement',{method:'POST',body:JSON.stringify({arrangement_id:ev.id,bekraeft_navn:typed})});
   if(!data?.ok)throw new Error('Serveren bekræftede ikke sletningen');
-  selectedEvent='';await loadEvents();status.textContent='Arrangementet er slettet permanent ('+data.deleted_photos+' billede(r) fjernet).';
+  closeTeamEditing();selectedEvent='';await loadEvents();status.textContent='Arrangementet er slettet permanent ('+data.deleted_photos+' billede(r) fjernet).';
  }catch(e){status.textContent='Sletning mislykkedes: '+e.message}
  finally{btn.disabled=false}
 });
@@ -172,7 +173,7 @@ let autoRefreshing = false;
 
 setInterval(async () => {
     if (!session || !selectedEvent ||
-        document.hidden || autoRefreshing) return;
+        document.hidden || autoRefreshing || teamDeleteBusy) return;
 
     autoRefreshing = true;
 
@@ -212,3 +213,47 @@ foldAdminForm('createEventDetails','createEventForm','Opret arrangement',createI
 const taskPanel = $('tasksPanel');
 const taskIntro = taskPanel.querySelector('p.muted');
 foldAdminForm('taskFormDetails','taskForm','Opret opgave',taskIntro);
+// v8.3 – holdadministration. Aktiver først efter installation af Edge Function.
+const TEAM_DELETE_ENABLED = false;
+let teamEditing=false, teamDeleteBusy=false, teamCount=0;
+const teamPanel=$('teamsBody').closest('section');
+const teamHeading=teamPanel.querySelector('h2');
+const teamToolbar=document.createElement('div');
+teamToolbar.style.cssText='display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px';
+teamHeading.before(teamToolbar);teamToolbar.append(teamHeading);teamHeading.style.margin='0';
+const teamEditButton=document.createElement('button');teamEditButton.type='button';teamEditButton.className='secondary task-small';teamToolbar.append(teamEditButton);
+const teamActionHeader=document.createElement('th');teamActionHeader.textContent='Handling';teamActionHeader.className='team-delete-column';teamPanel.querySelector('thead tr').append(teamActionHeader);
+const teamDeleteArea=document.createElement('div');teamDeleteArea.style.cssText='margin-top:16px;text-align:right';teamPanel.append(teamDeleteArea);
+const teamDeleteAll=document.createElement('button');teamDeleteAll.type='button';teamDeleteAll.className='delete-danger task-small';teamDeleteAll.textContent='Ryd alle hold';teamDeleteArea.append(teamDeleteAll);
+const teamDeleteStatus=document.createElement('p');teamDeleteStatus.className='muted';teamDeleteStatus.setAttribute('role','status');teamPanel.append(teamDeleteStatus);
+function updateTeamControls(count=teamCount){
+ teamCount=count;teamEditButton.textContent=teamEditing?'Afslut redigering':'Redigér';teamEditButton.setAttribute('aria-expanded',String(teamEditing));
+ teamPanel.querySelectorAll('.team-delete-column').forEach(el=>el.hidden=!teamEditing);
+ teamDeleteArea.hidden=!teamEditing;teamDeleteAll.disabled=!TEAM_DELETE_ENABLED||teamDeleteBusy||!count||!selectedEvent;
+ teamPanel.querySelectorAll('.team-delete-one').forEach(b=>b.disabled=!TEAM_DELETE_ENABLED||teamDeleteBusy);
+ const emptyCell=$('teamsBody').querySelector('td[colspan]');if(emptyCell)emptyCell.colSpan=teamEditing?6:5;
+}
+function closeTeamEditing(){teamEditing=false;updateTeamControls(0);teamDeleteStatus.textContent='';}
+function appendTeamAction(tr,t,eventId){
+ const td=document.createElement('td');td.className='team-delete-column';td.hidden=!teamEditing;
+ const b=document.createElement('button');b.type='button';b.className='delete-danger task-small team-delete-one';b.textContent='Slet hold';b.disabled=!TEAM_DELETE_ENABLED||teamDeleteBusy;
+ b.addEventListener('click',()=>deleteTeams(eventId,t));td.append(b);tr.append(td);
+}
+teamEditButton.addEventListener('click',()=>{teamEditing=!teamEditing;updateTeamControls();teamDeleteStatus.textContent=teamEditing&&!TEAM_DELETE_ENABLED?'Sletning aktiveres, når Supabase-funktionen er installeret.':'';});
+teamDeleteAll.addEventListener('click',()=>deleteTeams(selectedEvent,null));
+async function deleteTeams(eventId,team){
+ if(!TEAM_DELETE_ENABLED||!session||!teamEditing||teamDeleteBusy||!eventId||eventId!==selectedEvent)return;
+ const ev=events.find(e=>e.id===eventId);if(!ev)return;
+ const phrase=team?'SLET HOLD':'RYD ALLE HOLD';
+ const target=team?'holdet '+team.navn:'ALLE hold';
+ if(!confirm('Slet '+target+' i '+ev.titel+' permanent, inklusive svar, point og billeder?'))return;
+ if(prompt('Skriv '+phrase+' for at bekræfte:')!==phrase)return;
+ teamDeleteBusy=true;updateTeamControls();teamDeleteStatus.textContent='Sletter…';
+ try{
+  const data=await adminRequest('/functions/v1/slet-messehold',{method:'POST',body:JSON.stringify({arrangement_id:eventId,hold_id:team?team.id:null,alle_hold:!team,bekraeftelse:phrase})});
+  if(data?.ok!==true)throw new Error('Serveren bekræftede ikke sletningen');
+  if(selectedEvent===eventId){await loadData();teamDeleteStatus.textContent='Slettet: '+data.deleted_teams+' hold og '+data.deleted_photos+' billeder.';}
+ }catch(e){teamDeleteStatus.textContent='Sletning kunne ikke bekræftes: '+e.message;}
+ finally{teamDeleteBusy=false;updateTeamControls();}
+}
+updateTeamControls();
