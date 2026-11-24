@@ -166,3 +166,21 @@ $('deleteEventBtn').addEventListener('click', async () => {
  }catch(e){status.textContent='Sletning mislykkedes: '+e.message}
  finally{btn.disabled=false}
 });
+
+// Automatisk opdatering hvert 10. sekund
+let autoRefreshing = false;
+
+setInterval(async () => {
+    if (!session || !selectedEvent ||
+        document.hidden || autoRefreshing) return;
+
+    autoRefreshing = true;
+
+    try {
+        await loadData();
+    } catch (e) {
+        console.warn('Automatisk opdatering mislykkedes:', e);
+    } finally {
+        autoRefreshing = false;
+    }
+}, 10000);
