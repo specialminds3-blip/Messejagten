@@ -12,7 +12,8 @@ function error(msg){$('notice').textContent=msg;$('notice').hidden=false;window.
 function clearError(){$('notice').hidden=true}
 async function rpc(name,args){const res=await fetch(URL_BASE+'/rest/v1/rpc/'+name,{method:'POST',headers:{'Content-Type':'application/json','apikey':PUBLISHABLE_KEY,'Authorization':'Bearer '+PUBLISHABLE_KEY},body:JSON.stringify(args)});const data=await res.json();if(!res.ok)throw new Error(data.message||'Der opstod en fejl');return data}
 function auth(){return {p_hold_id:saved.id,p_session_token:saved.token}}
-function showTeam(data){clearError();$('join').hidden=true;$('game').hidden=false;$('teamTitle').textContent=data.name;$('teamCode').textContent=data.holdkode||'Kun vist ved oprettelse';$('codeArea').hidden=!data.holdkode;if(data.submitted){showFinished();return}loadTasks()}
+function showTeam(data){clearError();$('join').hidden=true;$('game').hidden=false;$('teamTitle').textContent=data.name;$('welcome').hidden=true;$('taskArea').hidden=true;$('summary').hidden=true;$('finished').hidden=true;if(data.submitted){showFinished();return}if(data.welcomePending && data.holdkode){$('teamCode').textContent=data.holdkode;$('copyBtn').textContent='Kopiér holdkode';$('progress').textContent='';$('welcome').hidden=false;return}loadTasks()}
+$('understoodBtn').addEventListener('click',()=>{if(!saved)return;saved.welcomePending=false;localStorage.setItem(STORAGE,JSON.stringify(saved));$('welcome').hidden=true;loadTasks()});
 function showFinished(){clearError();$('taskArea').hidden=true;$('summary').hidden=true;$('finished').hidden=false;$('progress').textContent='Afleveret';$('finishedTeam').textContent=saved?.name||'Jeres hold';$('finishedPoints').textContent='–';$('finishedPlace').textContent='–';$('resultsBtn').textContent='Se hele ranglisten';$('resultsStatus').textContent='Henter jeres resultat…';$('publicResults').hidden=true;loadPublicResults(false)}
 async function loadTasks(){try{const data=await rpc('hent_messeopgaver',auth());tasks=Array.isArray(data)?data:[];if(!tasks.length){error('Der er endnu ingen opgaver til holdet.');return}current=Math.min(current,tasks.length-1);renderTask()}catch(e){error('Kunne ikke hente opgaver: '+e.message)}}
 async function uploadPhoto(task,file){
@@ -68,27 +69,13 @@ $('recoveryForm').addEventListener('submit',async e=>{
   }catch(err){error('Kunne ikke genoptage hold: '+(err.message||'Ukendt fejl'))}
   finally{btn.disabled=false;btn.textContent='Genoptag hold'}
 });
-$('showRecoveryBtn').addEventListener('click',()=>{clearError();$('recoveryForm').hidden=false;$('showRecoveryBtn').hidden=true;$('recoveryCode').value=$('code').value.trim()||qs.get('kode')||'';$('recoveryTeamCode').focus()});
-$('cancelRecoveryBtn').addEventListener('click',()=>{$('recoveryForm').hidden=true;$('showRecoveryBtn').hidden=false;clearError()});
-$('recoveryForm').addEventListener('submit',async e=>{
-  e.preventDefault();clearError();const btn=$('recoverBtn');btn.disabled=true;btn.textContent='Genoptager…';
-  try{
-    const data=await rpc('genoptag_messehold',{p_arrangementskode:$('recoveryCode').value.trim(),p_holdkode:$('recoveryTeamCode').value.trim().toLowerCase()});
-    const record=Array.isArray(data)?data[0]:data;
-    if(!record?.hold_id||!record?.session_token||!record?.holdnavn)throw new Error('Supabase returnerede ikke gyldige holdoplysninger');
-    saved={id:record.hold_id,holdkode:$('recoveryTeamCode').value.trim().toLowerCase(),token:record.session_token,name:record.holdnavn};
-    localStorage.setItem(STORAGE,JSON.stringify(saved));$('resumeBtn').hidden=false;current=0;skipped=new Set();showTeam(saved);
-  }catch(err){error('Kunne ikke genoptage holdet: '+(err.message||'Ukendt fejl'))}
-  finally{btn.disabled=false;btn.textContent='Genoptag hold'}
-});
-
 $('copyBtn').addEventListener('click',async()=>{try{await navigator.clipboard.writeText(saved.holdkode);$('copyBtn').textContent='Kopieret!'}catch{error('Kunne ikke kopiere automatisk.')}});
 $('saveBtn').addEventListener('click',async()=>{const ok=await saveAnswer();if(ok && tasks.every(t=>Boolean(t.billede_sti || (t.svar_tekst!=null && String(t.svar_tekst).trim()!==''))))summary();});
 $('skipBtn').addEventListener('click',()=>{skipped.add(tasks[current].opgave_id);current++;if(current>=tasks.length)summary();else renderTask()});
 $('prevBtn').addEventListener('click',()=>{if(current>0){current--;renderTask()}});
 $('nextBtn').addEventListener('click',()=>{current++;if(current>=tasks.length)summary();else renderTask()});
 $('backTasks').addEventListener('click',()=>{current=0;renderTask()});
-$('joinForm').addEventListener('submit',async e=>{e.preventDefault();const btn=$('joinBtn');btn.disabled=true;btn.textContent='Opretter hold…';clearError();const name=$('team').value.trim();try{const data=await rpc('opret_messehold',{p_arrangementskode:$('code').value.trim(),p_holdnavn:name});const record=Array.isArray(data)?data[0]:data;if(!record?.hold_id||!record?.session_token)throw new Error('Supabase returnerede ikke holdoplysninger');saved={id:record.hold_id,holdkode:record.holdkode,token:record.session_token,name};localStorage.setItem(STORAGE,JSON.stringify(saved));$('resumeBtn').hidden=false;current=0;skipped=new Set();showTeam(saved)}catch(err){error(err.message||'Der opstod en fejl')}finally{btn.disabled=false;btn.textContent='Opret hold'}});
+$('joinForm').addEventListener('submit',async e=>{e.preventDefault();const btn=$('joinBtn');btn.disabled=true;btn.textContent='Opretter hold…';clearError();const name=$('team').value.trim();try{const data=await rpc('opret_messehold',{p_arrangementskode:$('code').value.trim(),p_holdnavn:name});const record=Array.isArray(data)?data[0]:data;if(!record?.hold_id||!record?.session_token)throw new Error('Supabase returnerede ikke holdoplysninger');saved={id:record.hold_id,holdkode:record.holdkode,token:record.session_token,name,welcomePending:true};localStorage.setItem(STORAGE,JSON.stringify(saved));$('resumeBtn').hidden=false;current=0;skipped=new Set();showTeam(saved)}catch(err){error(err.message||'Der opstod en fejl')}finally{btn.disabled=false;btn.textContent='Opret hold'}});
 
 // Ranglisten er synlig for afleverede hold uden manuel offentliggørelse.
 async function loadPublicResults(showTable=true){
