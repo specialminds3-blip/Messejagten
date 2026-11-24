@@ -57,7 +57,7 @@ $('taskCancel').addEventListener('click',resetTaskForm);
 function unpackFacit(f){if(f==null)return '';if(typeof f==='string')return f;if(typeof f==='number')return String(f);return typeof f==='object'&&f.svar!=null?String(f.svar):JSON.stringify(f)}
 async function loadTasksAdmin(){if(!selectedEvent){eventTasks=[];renderTasksAdmin();return}try{eventTasks=await adminRequest('/rest/v1/opgaver?select=id,arrangement_id,titel,beskrivelse,type,svarmuligheder,facit,max_point,kraever_manuel_bedoemmelse,aktiv&arrangement_id=eq.'+encodeURIComponent(selectedEvent)+'&order=oprettet_at.asc&limit=1000');renderTasksAdmin()}catch(e){$('taskResult').textContent='Kunne ikke hente opgaver: '+e.message}}
 function renderTasksAdmin(){const body=$('taskRows');body.replaceChildren();for(const t of eventTasks){const tr=document.createElement('tr');[t.titel,t.type,t.max_point,t.aktiv?'Aktiv':'Deaktiveret'].forEach(v=>cell(tr,v));const td=document.createElement('td');const edit=document.createElement('button');edit.type='button';edit.className='secondary task-small';edit.textContent='Rediger';edit.addEventListener('click',()=>editTask(t.id));const toggle=document.createElement('button');toggle.type='button';toggle.className='secondary task-small';toggle.textContent=t.aktiv?'Deaktivér':'Aktivér';toggle.addEventListener('click',()=>toggleTask(t.id));td.append(edit,toggle);tr.append(td);body.append(tr)}if(!eventTasks.length){const tr=document.createElement('tr');const td=document.createElement('td');td.colSpan=5;td.textContent='Ingen opgaver endnu';tr.append(td);body.append(tr)}}
-function editTask(id){const t=eventTasks.find(x=>x.id===id);if(!t)return;$('taskId').value=t.id;$('taskTitle').value=t.titel;$('taskDescription').value=t.beskrivelse||'';$('taskType').value=t.type;$('taskChoices').value=Array.isArray(t.svarmuligheder)?t.svarmuligheder.join('\n'):'';$('taskAnswer').value=unpackFacit(t.facit);$('taskPoints').value=10;$('taskManual').checked=false;$('taskActive').checked=t.aktiv;$('taskSave').textContent='Gem ændringer';$('taskCancel').hidden=false;$('taskResult').textContent='Redigerer: '+t.titel;taskFormState();$('tasksPanel').scrollIntoView({behavior:'smooth'})}
+function editTask(id){const t=eventTasks.find(x=>x.id===id);if(!t)return;$('taskFormDetails').open=true;$('taskId').value=t.id;$('taskTitle').value=t.titel;$('taskDescription').value=t.beskrivelse||'';$('taskType').value=t.type;$('taskChoices').value=Array.isArray(t.svarmuligheder)?t.svarmuligheder.join('\n'):'';$('taskAnswer').value=unpackFacit(t.facit);$('taskPoints').value=10;$('taskManual').checked=false;$('taskActive').checked=t.aktiv;$('taskSave').textContent='Gem ændringer';$('taskCancel').hidden=false;$('taskResult').textContent='Redigerer: '+t.titel;taskFormState();$('taskFormDetails').scrollIntoView({behavior:'smooth'})}
 async function toggleTask(id){const t=eventTasks.find(x=>x.id===id);if(!t)return;if(!confirm((t.aktiv?'Deaktivér':'Aktivér')+' opgaven "'+t.titel+'"? Eksisterende hold kan stadig have opgaven tildelt.'))return;try{await adminRequest('/rest/v1/opgaver?id=eq.'+encodeURIComponent(id),{method:'PATCH',headers:{Prefer:'return=minimal'},body:JSON.stringify({aktiv:!t.aktiv})});await loadTasksAdmin()}catch(e){$('taskResult').textContent='Kunne ikke ændre status: '+e.message}}
 $('taskForm').addEventListener('submit',async e=>{e.preventDefault();if(!selectedEvent){$('taskResult').textContent='Vælg et arrangement først';return}const id=$('taskId').value,type=$('taskType').value,title=$('taskTitle').value.trim(),choices=$('taskChoices').value.split(/\r?\n/).map(x=>x.trim()).filter(Boolean),answer=$('taskAnswer').value.trim(),points=10,manual=false;if(!title||!Number.isInteger(points)||points<0){$('taskResult').textContent='Udfyld titel og gyldige point';return}if(type==='multiple_choice'&&(choices.length<2||new Set(choices).size!==choices.length)){$('taskResult').textContent='Angiv mindst to forskellige svarmuligheder';return}if(type==='multiple_choice'&&!manual&&!choices.includes(answer)){$('taskResult').textContent='Facit skal være en af svarmulighederne';return}if(type!=='foto'&&!answer){$('taskResult').textContent='Angiv facit, eller vælg manuel bedømmelse';return}const payload={titel:title,beskrivelse:$('taskDescription').value.trim()||null,type,svarmuligheder:type==='multiple_choice'?choices:null,facit:answer||null,max_point:10,kraever_manuel_bedoemmelse:false,aktiv:$('taskActive').checked};if(!id)payload.arrangement_id=selectedEvent;if(id&&!confirm('Gem ændringer? Eksisterende hold kan allerede have fået opgaven tildelt.'))return;const btn=$('taskSave');btn.disabled=true;$('taskResult').textContent='Gemmer…';try{await adminRequest('/rest/v1/opgaver'+(id?'?id=eq.'+encodeURIComponent(id):''),{method:id?'PATCH':'POST',headers:{Prefer:'return=minimal'},body:JSON.stringify(payload)});resetTaskForm();await loadTasksAdmin();$('taskResult').textContent=id?'Opgaven er opdateret':'Opgaven er oprettet'}catch(err){$('taskResult').textContent='Kunne ikke gemme: '+err.message}finally{btn.disabled=false}});
 taskFormState();
@@ -184,3 +184,31 @@ setInterval(async () => {
         autoRefreshing = false;
     }
 }, 10000);
+
+// Sammenklappelige oprettelsesformularer (v8.2)
+function foldAdminForm(id, formId, title, firstElement) {
+ const form = $(formId);
+ const details = document.createElement('details');
+ details.id = id;
+ const summary = document.createElement('summary');
+ summary.textContent = title;
+ summary.style.cssText = 'cursor:pointer;font-size:20px;font-weight:700;padding:4px 0;color:#075674;';
+ details.append(summary);
+ firstElement.before(details);
+ let node = firstElement;
+ while (node) {
+   const next = node.nextElementSibling;
+   details.append(node);
+   if (node === form) break;
+   node = next;
+ }
+ return details;
+}
+const createPanel = $('createEventPanel');
+const createHeading = createPanel.querySelector('h2');
+const createIntro = createHeading.nextElementSibling;
+createHeading.remove();
+foldAdminForm('createEventDetails','createEventForm','Opret arrangement',createIntro);
+const taskPanel = $('tasksPanel');
+const taskIntro = taskPanel.querySelector('p.muted');
+foldAdminForm('taskFormDetails','taskForm','Opret opgave',taskIntro);
